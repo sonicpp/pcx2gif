@@ -12,6 +12,7 @@
 #include <getopt.h>
 #include <string.h>
 #include <errno.h>
+#include <stdlib.h>
 
 #include "pcx.h"
 #include "gif.h"
@@ -30,6 +31,9 @@ static int pcx2gif(FILE *input, FILE *output)
 
 	pcx_load(&img, input);
 	gif_save(&img, output);
+
+	if (img.data != NULL)
+		free(img.data);
 
 	return 0;
 }

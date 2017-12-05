@@ -10,6 +10,7 @@
 
 #include <stdio.h>
 #include <assert.h>
+#include <stdlib.h>
 
 #include "pcx.h"
 
@@ -48,7 +49,31 @@ static size_t load_header(struct PCX_header *header, FILE *f_pcx)
 	if (cnt != SIZE_HEADER)
 		return 0;
 
-	if (header->manufacturer != 0x0A)
+	/* Check header */
+	if (
+		/* Check PCX flag */
+		(header->manufacturer != 0x0A) ||
+		/* BytesPerLine MUST be an EVEN number */
+		(header->bytes_per_line & 0x1) ||
+		/* TODO */
+		(header->xmax < header->xmin || header->ymax < header->ymin) ||
+		/* TODO */
+		(header->bytes_per_line < (header->xmax - header->xmin + 1))
+	)
+		return 0;
+
+	return cnt;
+}
+
+static size_t parse_row(uint8_t *data, uint16_t len, uint16_t size, FILE *f_pcx)
+{
+	assert(data);
+	assert(len <= size);
+	assert(f_pcx);
+	size_t cnt;
+
+	cnt = fread(data, 1, size, f_pcx);
+	if (cnt != size)
 		return 0;
 
 	return cnt;
@@ -59,6 +84,7 @@ size_t pcx_load(image_t *p_img, FILE *f_pcx)
 	struct PCX_header header;
 	size_t pcx_len = 0;
 	size_t block_len = 0;
+	uint16_t width, height;
 
 	/* Parse Header */
 	if ((block_len = load_header(&header, f_pcx)) == 0) {
@@ -67,7 +93,25 @@ size_t pcx_load(image_t *p_img, FILE *f_pcx)
 	}
 	pcx_len += block_len;
 
-	/* TODO */
-	return 0;
+	width = header.xmax - header.xmin + 1;
+	height = header.ymax - header.ymin + 1;
+	if ((p_img->data = (uint8_t *) malloc(3u * width * height)) == NULL) {
+		fprintf(stderr, "PCX: Out of memory\n");
+		return 0;
+	}
+	printf("Size: %u, %ux%u\n", header.planes_cnt * header.bytes_per_line, width, height);
+
+	while (height--) {
+		if ((block_len = parse_row(p_img->data, width,
+		header.bytes_per_line, f_pcx)) == 0) {
+			fprintf(stderr, "PCX: Invalid data\n");
+			free(p_img->data);
+			p_img->data = NULL;
+			return 0;
+		}
+		pcx_len += block_len;
+	}
+
+	return pcx_len;
 }
 
